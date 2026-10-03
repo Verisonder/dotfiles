@@ -1,0 +1,9 @@
+[Unit]
+Description=SR start-page files for the browser (localhost:47300)
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/bin/sr-web
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

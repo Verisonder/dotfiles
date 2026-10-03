@@ -173,6 +173,29 @@ if os.path.isdir(pol) and os.access(pol, os.W_OK):
         subprocess.Popen(["setsid", apps[-1], "--refresh-platform-policy", "--no-startup-window"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+# Bonjourr start page: colours + wallpaper, served by sr-web on 127.0.0.1:47300
+web = H + "/.cache/sr-web"
+os.makedirs(web, exist_ok=True)
+wl = web + "/wallpaper.jpg"
+if not os.path.islink(wl):
+    if os.path.exists(wl):
+        os.remove(wl)
+    os.symlink(H + "/Pictures/wallpaper/current.jpg", wl)
+sp = lambda h: " ".join(str(int(hx(h)[i:i+2], 16)) for i in (0, 2, 4))
+open(web + "/bonjourr.css", "w").write(
+    "/* written by sr-theme-set (" + name + ") */" + chr(10) +
+    ":root {" + chr(10) +
+    "    --font-color: " + sp(fg) + " !important;" + chr(10) +
+    "    --font-on-blur-color: " + sp(fg) + " !important;" + chr(10) +
+    "    --accent-color: " + sp(acc) + " !important;" + chr(10) +
+    "    --solid-background: " + bg + " !important;" + chr(10) +
+    "    --average-color: " + bg + " !important;" + chr(10) +
+    "    --font-family: 'JetBrainsMono Nerd Font', monospace !important;" + chr(10) +
+    "}" + chr(10) +
+    "#background-wrapper { background: " + bg + " url('http://127.0.0.1:47300/wallpaper.jpg') center / cover no-repeat !important; }" + chr(10) +
+    "#background-media, #background-color, #background-texture { opacity: 0 !important; }" + chr(10) +
+    "#searchbar { border: 1px solid " + acc + " !important; }" + chr(10))
+
 os.makedirs(f"{H}/.config/sr", exist_ok=True)
 open(f"{H}/.config/sr/theme", "w").write(name)
 
