@@ -158,6 +158,21 @@ if os.path.isdir(isrc):
     if os.path.exists("/usr/libexec/plasma-changeicons"):
         subprocess.run(["/usr/libexec/plasma-changeicons", iname], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+# Helium (Chromium policy): browser colour follows the theme, light/dark follows the system
+pol = "/etc/chromium/policies/managed"
+if os.path.isdir(pol) and os.access(pol, os.W_OK):
+    ct = T + "/chromium.theme"
+    if os.path.exists(ct):
+        hexc = "#" + "".join(format(int(x), "02x") for x in open(ct).read().strip().split(","))
+    else:
+        hexc = bg
+    open(pol + "/color.json", "w").write('{"BrowserThemeColor": "' + hexc + '", "BrowserColorScheme": "device"}' + chr(10))
+    running = subprocess.run(["pgrep", "-f", "-i", "helium"], stdout=subprocess.DEVNULL).returncode == 0
+    apps = sorted(glob.glob(H + "/Apps/helium*.appimage"))
+    if running and apps:   # apply the new colour to the open browser
+        subprocess.Popen(["setsid", apps[-1], "--refresh-platform-policy", "--no-startup-window"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 os.makedirs(f"{H}/.config/sr", exist_ok=True)
 open(f"{H}/.config/sr/theme", "w").write(name)
 
