@@ -121,3 +121,6 @@ srDragging = false
 hl.bind(mainMod .. " + mouse:272", function() srDragging = true end, { non_consuming = true })
 hl.bind("mouse:272", function() srDragging = false end, { release = true, non_consuming = true })
 hl.bind(mainMod .. " + mouse:272", function() srDragging = false end, { release = true, non_consuming = true })
+
+-- Settings menu, second shortcut
+hl.bind("CTRL + ALT + S", hl.dsp.exec_cmd(HOME .. "/.local/bin/sr-settings"))

@@ -55,7 +55,7 @@ for n, l in enumerate(open(sys.argv[1]), 1):
     print(f"{n:>4}  {key:<26} {act.strip()[:60]}")
 PY
 )
-    choice=$(printf '   Edit keybindings file\n%s\n' "$list" | pick)
+    choice=$(printf '󰏫  Edit keybindings file\n%s\n' "$list" | pick)
     [ -n "$choice" ] || return
     if [[ "$choice" == *"Edit keybindings file"* ]]; then edit "$HYPR/keybinds.lua"
     else edit "$HYPR/keybinds.lua" "$(echo "$choice" | awk '{print $1}')"; fi
@@ -78,7 +78,7 @@ config_menu() {
     esac
 }
 
-choice=$(printf '%s\n' "󰸌  Theme" "  Hidden apps" "󰸉  Wallpaper" "  Keybindings" "  Edit configs" "󰑓  Reload desktop" | pick)
+choice=$(printf '%s\n' "󰸌  Theme" "󰈉  Hidden apps" "󰸉  Wallpaper" "󰌌  Keybindings" "󰒓  Edit configs" "󰑓  Reload desktop" "󰐥  Power" | pick)
 case "$choice" in
     *Theme)        theme_menu ;;
     *"Hidden apps") exec ~/.local/bin/sr-apps ;;
@@ -86,4 +86,5 @@ case "$choice" in
     *Keybindings)  keybind_menu ;;
     *"Edit configs") config_menu ;;
     *Reload*)      reload ;;
+    *Power)        exec "$HOME/.config/waybar/power.sh" ;;
 esac
