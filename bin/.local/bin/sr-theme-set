@@ -192,9 +192,9 @@ open(web + "/bonjourr.css", "w").write(
     "    --average-color: " + bg + " !important;" + chr(10) +
     "    --font-family: 'JetBrainsMono Nerd Font', monospace !important;" + chr(10) +
     "}" + chr(10) +
-    "#background-wrapper { background: " + bg + " url('http://127.0.0.1:47300/wallpaper.jpg') center / cover no-repeat !important; }" + chr(10) +
+    "#background-wrapper { background: " + bg + " !important; }" + chr(10) +
     "#background-media, #background-color, #background-texture { opacity: 0 !important; }" + chr(10) +
-    "#searchbar { border: 1px solid " + acc + " !important; }" + chr(10))
+    chr(10))
 
 os.makedirs(f"{H}/.config/sr", exist_ok=True)
 open(f"{H}/.config/sr/theme", "w").write(name)
