@@ -196,6 +196,14 @@ open(web + "/bonjourr.css", "w").write(
     "#background-media, #background-color, #background-texture { opacity: 0 !important; }" + chr(10) +
     chr(10))
 
+# SDDM login screen (SR theme): colours + blurred wallpaper
+sdd = "/usr/share/sddm/themes/sr"
+if os.path.isdir(sdd) and os.access(sdd, os.W_OK):
+    open(sdd + "/theme.conf", "w").write("[General]" + chr(10) + "background=background.jpg" + chr(10) +
+        "bg=" + bg + chr(10) + "fg=" + fg + chr(10) + "accent=" + acc + chr(10) +
+        "red=" + c.get("color1", "#ea6962") + chr(10))
+    subprocess.run([H + "/.local/bin/sr-sddm-bg"])
+
 os.makedirs(f"{H}/.config/sr", exist_ok=True)
 open(f"{H}/.config/sr/theme", "w").write(name)
 

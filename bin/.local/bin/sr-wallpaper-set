@@ -5,3 +5,4 @@ mkdir -p "$HOME/Pictures/wallpaper"
 cp "$1" "$HOME/Pictures/wallpaper/current.jpg"
 pkill swaybg
 hyprctl reload > /dev/null
+"$HOME/.local/bin/sr-sddm-bg"

@@ -63,6 +63,15 @@ elephant service enable 2>/dev/null || true
 mkdir -p "$HOME/Pictures/wallpaper" "$HOME/Pictures/ScreenTrash"
 fish -c 'set -U fish_greeting' 2>/dev/null || true
 
+echo "==> Login screen (SDDM)"
+sudo install -d -o "$USER" -g "$USER" /usr/share/sddm/themes/sr
+cp "$DOT"/sddm/sr/* /usr/share/sddm/themes/sr/
+f=$(fc-match -f '%{file}' 'JetBrainsMono Nerd Font'); [ -f "$f" ] && cp "$f" /usr/share/sddm/themes/sr/font.ttf
+sudo mkdir -p /etc/sddm.conf.d
+printf '[Theme]
+Current=sr
+' | sudo tee /etc/sddm.conf.d/zz-sr-theme.conf > /dev/null
+
 echo "==> Theme"
 "$HOME/.local/bin/sr-theme-set" "$(cat "$HOME/.config/sr/theme" 2>/dev/null || echo gruvbox)" || true
 

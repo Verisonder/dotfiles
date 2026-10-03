@@ -1,0 +1,8 @@
+[SddmGreeterTheme]
+Name=SR
+Description=SR login screen (Omarchy lock-screen look, follows the SR theme)
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+QtVersion=6

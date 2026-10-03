@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# sr-sddm-bg — put a blurred copy of the current wallpaper on the SR login screen
+import os, shutil
+sd = "/usr/share/sddm/themes/sr"
+wp = os.path.expanduser("~/Pictures/wallpaper/current.jpg")
+if os.path.isdir(sd) and os.access(sd, os.W_OK) and os.path.exists(wp):
+    try:
+        from PIL import Image, ImageFilter
+        im = Image.open(wp).convert("RGB")
+        im.thumbnail((2560, 2560))
+        im.filter(ImageFilter.GaussianBlur(12)).save(sd + "/background.jpg", quality=88)
+    except Exception:
+        shutil.copy(wp, sd + "/background.jpg")
