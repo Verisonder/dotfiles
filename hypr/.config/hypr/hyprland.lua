@@ -173,3 +173,27 @@ for _, f in ipairs({ "keybinds.lua", "theme.lua" }) do
     local fh = io.open(path)
     if fh then fh:close(); dofile(path) end
 end
+
+-- Elephant (app menu backend) starts before the session variables exist:
+-- restart it once per session so menus can launch apps and reach Hyprland
+do
+    local sig = os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or ""
+    local mark = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/sr-elephant-" .. sig
+    local f = io.open(mark, "r")
+    if f then f:close() else
+        f = io.open(mark, "w"); if f then f:write("1"); f:close() end
+        hl.exec_cmd("sleep 2; systemctl --user restart elephant.service")
+    end
+end
+
+-- Elephant (app menu backend) starts before the session variables exist:
+-- restart it once per session so menus can launch apps and reach Hyprland
+do
+    local sig = os.getenv("HYPRLAND_INSTANCE_SIGNATURE") or ""
+    local mark = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/sr-elephant-" .. sig
+    local f = io.open(mark, "r")
+    if f then f:close() else
+        f = io.open(mark, "w"); if f then f:write("1"); f:close() end
+        hl.exec_cmd("sleep 2; systemctl --user restart elephant.service")
+    end
+end

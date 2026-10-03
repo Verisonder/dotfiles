@@ -230,7 +230,7 @@ def click(did):
     if shifted:
         open_app_menu(did)
     else:
-        subprocess.Popen(["setsid", "gtk-launch", did[:-len(".desktop")]])
+        subprocess.Popen(["uwsm", "app", "--", did])
 
 
 def do(arg):
@@ -246,7 +246,7 @@ def do(arg):
         notify("App not found", did, urgent=True); return
     path, e = apps[did]
     if action == "open":
-        subprocess.Popen(["setsid", "gtk-launch", did[:-len(".desktop")]])
+        subprocess.Popen(["uwsm", "app", "--", did])
     elif action == "info":
         show_info(did, path, e)
     elif action == "hide":
