@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+# sr-apps — app manager in Walker (with app icons): info, hide/unhide, uninstall
+# The menus themselves are elephant Lua menus in ~/.config/elephant/menus/sr_apps*.lua;
+# this script lists apps for them and performs the actions.
+# Hide/unhide works through ~/.local/share/applications overrides (NoDisplay=true),
+# so nothing system-wide is touched. Uninstall detects dnf, flatpak, snap or a
+# hand-made launcher and asks before doing anything.
+import os, re, glob, shlex, subprocess, sys
+
+H = os.path.expanduser("~")
+USER_APPS = f"{H}/.local/share/applications"
+MARK = "X-SR-Hidden"
+STATE = f"{H}/.cache/sr-apps-current"
+SHIFT_FLAG = f"{H}/.cache/sr-shift-click"   # written by Hyprland on SHIFT+click
+LAUNCH = f"{H}/.local/bin/sr-launcher"
+
+
+def pick(lines):
+    r = subprocess.run(["walker", "--dmenu"], input="\n".join(lines),
+                       text=True, capture_output=True)
+    return r.stdout.strip()
+
+
+def notify(title, body="", urgent=False):
+    subprocess.run(["notify-send"] + (["-u", "critical"] if urgent else []) + [title, body])
+
+
+def read_entry(path):
+    d, section = {}, None
+    try:
+        for line in open(path, encoding="utf-8", errors="replace"):
+            line = line.strip()
+            if line.startswith("["):
+                section = line
+                continue
+            if section == "[Desktop Entry]" and "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                d.setdefault(k.strip(), v.strip())
+    except OSError:
+        pass
+    return d
+
+
+def app_dirs():
+    data = os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+    dirs = [USER_APPS, f"{H}/.local/share/flatpak/exports/share/applications",
+            "/var/lib/flatpak/exports/share/applications",
+            "/var/lib/snapd/desktop/applications"]
+    dirs += [d.rstrip("/") + "/applications" for d in data]
+    seen, out = set(), []
+    for d in dirs:
+        if d not in seen and os.path.isdir(d):
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def all_apps():
+    """Return {desktop_id: (path, entry)} with user files taking precedence."""
+    apps = {}
+    for d in app_dirs():
+        for p in glob.glob(f"{d}/*.desktop"):
+            did = os.path.basename(p)
+            if did not in apps:
+                apps[did] = (p, read_entry(p))
+    return apps
+
+
+def visible(apps):
+    desk = [d for d in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":") if d] or ["Hyprland"]
+    out = []
+    for did, (p, e) in apps.items():
+        if e.get("Type") != "Application":
+            continue
+        if e.get("NoDisplay", "").lower() == "true" or e.get("Hidden", "").lower() == "true":
+            continue
+        nsi = [x for x in e.get("NotShowIn", "").split(";") if x]
+        osi = [x for x in e.get("OnlyShowIn", "").split(";") if x]
+        if any(d in nsi for d in desk) or (osi and not any(d in osi for d in desk)):
+            continue
+        out.append((e.get("Name", did), did))
+    return sorted(out, key=lambda x: x[0].lower())
+
+
+def hidden_by_me(apps):
+    return sorted([(e.get("Name", did), did) for did, (p, e) in apps.items() if MARK in e],
+                  key=lambda x: x[0].lower())
+
+
+def source_of(did, path):
+    """Return (kind, id) — kind: flatpak | snap | rpm | launcher."""
+    real = os.path.realpath(path)
+    if "flatpak" in path or "flatpak" in real:
+        return "flatpak", did[:-len(".desktop")]
+    if "/snapd/" in path:
+        name = did[:-len(".desktop")].split("_")[0]
+        return "snap", name
+    # system file shadowed by a user override? look for the original
+    for d in app_dirs():
+        if d == USER_APPS:
+            continue
+        cand = f"{d}/{did}"
+        if os.path.exists(cand):
+            r = subprocess.run(["rpm", "-qf", "--qf", "%{NAME}", cand], capture_output=True, text=True)
+            if r.returncode == 0:
+                return "rpm", r.stdout.strip()
+            if "flatpak" in cand:
+                return "flatpak", did[:-len(".desktop")]
+    r = subprocess.run(["rpm", "-qf", "--qf", "%{NAME}", real], capture_output=True, text=True)
+    if r.returncode == 0:
+        return "rpm", r.stdout.strip()
+    return "launcher", path
+
+
+def run_in_terminal(cmd):
+    full = f"{cmd}; echo; read -n1 -s -r -p 'Done — press any key to close'"
+    subprocess.Popen(["setsid", "kitty", "--class", "org.sr.editor", "-e", "bash", "-c", full])
+
+
+def reload_launcher():
+    subprocess.run("systemctl --user restart elephant.service 2>/dev/null || "
+                   "(pkill -x elephant; setsid elephant >/dev/null 2>&1 &)", shell=True)
+
+
+def show_info(did, path, e):
+    kind, ident = source_of(did, path)
+    src = {"rpm": f"dnf package: {ident}", "flatpak": f"Flatpak: {ident}",
+           "snap": f"Snap: {ident}", "launcher": "Launcher file only (no package)"}[kind]
+    lines = [
+        f"Name:      {e.get('Name', did)}",
+        f"About:     {e.get('Comment', '-')}",
+        f"Command:   {e.get('Exec', '-')}",
+        f"Category:  {e.get('Categories', '-').rstrip(';')}",
+        f"Source:    {src}",
+        f"File:      {path}",
+    ]
+    if kind == "rpm":
+        r = subprocess.run(["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}  (%{SIZE} bytes)", ident],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            lines.append(f"Version:   {r.stdout.strip()}")
+    lines += ["", "← Back"]
+    if pick(lines) == "← Back":
+        open_app_menu(did)
+
+
+def hide(did, path, e, quiet=False):
+    """Hide in Hyprland only (NotShowIn=Hyprland) — the app stays in Plasma's menu."""
+    os.makedirs(USER_APPS, exist_ok=True)
+    dst = f"{USER_APPS}/{did}"
+    kind = "edit" if path == dst else "copy"
+    t = open(path).read()
+    head, sep, rest = t.partition("[Desktop Entry]\n")
+    entry, sep2, tail = rest.partition("\n[")
+    m = re.search(r"^NotShowIn=(.*)$", entry, re.M)
+    if m:
+        if "Hyprland;" not in m.group(1):
+            entry = entry.replace(m.group(0), "NotShowIn=Hyprland;" + m.group(1), 1)
+    else:
+        entry = "NotShowIn=Hyprland;\n" + entry
+    entry = f"{MARK}={kind}\n" + entry
+    open(dst, "w").write(head + sep + entry + sep2 + tail)
+    if not quiet:
+        notify("App hidden in Hyprland", f"{e.get('Name', did)} — still in Plasma. Unhide: Settings > Hidden apps")
+
+
+def unhide(did):
+    p = f"{USER_APPS}/{did}"
+    e = read_entry(p)
+    if e.get(MARK) == "copy":
+        os.remove(p)
+    else:
+        t = open(p).read()
+        t = re.sub(rf"^{MARK}=.*\n", "", t, flags=re.M)
+        t = t.replace("NotShowIn=Hyprland;", "NotShowIn=", 1)
+        t = re.sub(r"^NotShowIn=\n", "", t, flags=re.M)
+        t = re.sub(r"^NoDisplay=true\n", "", t, flags=re.M)
+        open(p, "w").write(t)
+    notify("App visible again", e.get("Name", did))
+
+
+def uninstall(did, path, e):
+    name = e.get("Name", did)
+    kind, ident = source_of(did, path)
+    if kind == "rpm":
+        label, cmd = f"dnf package '{ident}'", f"sudo dnf remove {shlex.quote(ident)}"
+    elif kind == "flatpak":
+        label, cmd = f"Flatpak '{ident}'", f"flatpak uninstall {shlex.quote(ident)}"
+    elif kind == "snap":
+        label, cmd = f"Snap '{ident}'", f"sudo snap remove {shlex.quote(ident)}"
+    else:
+        label, cmd = "its launcher file", None
+    choice = pick([f"Yes, uninstall {name} ({label})", "Cancel"])
+    if not choice.startswith("Yes"):
+        return
+    if cmd:
+        run_in_terminal(cmd)              # dnf shows what it removes and asks again
+    else:
+        os.remove(path)
+        reload_launcher()
+        notify("Launcher removed", name)
+
+
+def clean(s):
+    return s.replace("\t", " ").replace("\n", " ")
+
+
+def list_apps(hidden=False):
+    apps = all_apps()
+    rows = hidden_by_me(apps) if hidden else visible(apps)
+    for name, did in rows:
+        e = apps[did][1]
+        print("\t".join(clean(x) for x in (did, name, e.get("Icon", "application-x-executable"),
+                                           e.get("Comment", e.get("GenericName", "")))))
+
+
+def open_app_menu(did):
+    open(STATE, "w").write(did)
+    os.execvp(LAUNCH, [LAUNCH, "-m", "menus:srappactions", "--width", "644", "--minheight", "300"])
+
+
+def click(did):
+    """Normal click/Enter opens the app; SHIFT+click opens its options."""
+    import time
+    try:
+        shifted = time.time() - os.path.getmtime(SHIFT_FLAG) < 2
+        os.remove(SHIFT_FLAG)
+    except OSError:
+        shifted = False
+    if shifted:
+        open_app_menu(did)
+    else:
+        subprocess.Popen(["setsid", "gtk-launch", did[:-len(".desktop")]])
+
+
+def do(arg):
+    action, _, did = arg.partition(":")
+    apps = all_apps()
+    if action == "unhide":
+        unhide(did); return
+    if action == "menu":
+        os.execvp(LAUNCH, [LAUNCH])
+    if action == "hidden":
+        os.execvp(LAUNCH, [LAUNCH, "-m", "menus:srhidden", "--width", "644", "--minheight", "300"])
+    if did not in apps:
+        notify("App not found", did, urgent=True); return
+    path, e = apps[did]
+    if action == "open":
+        subprocess.Popen(["setsid", "gtk-launch", did[:-len(".desktop")]])
+    elif action == "info":
+        show_info(did, path, e)
+    elif action == "hide":
+        hide(did, path, e)
+    elif action == "uninstall":
+        uninstall(did, path, e)
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    if not a:
+        do("hidden:")
+    elif a[0] == "--list":
+        list_apps()
+    elif a[0] == "--list-hidden":
+        list_apps(hidden=True)
+    elif a[0] == "--current":
+        print(open(STATE).read().strip() if os.path.exists(STATE) else "")
+    elif a[0] == "--click" and len(a) > 1:
+        click(a[1])
+    elif a[0] == "--app" and len(a) > 1:
+        open_app_menu(a[1])
+    elif a[0] == "--do" and len(a) > 1:
+        do(a[1])

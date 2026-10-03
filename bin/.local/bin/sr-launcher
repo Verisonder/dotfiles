@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Open Walker the Omarchy way, making sure elephant and the walker service are up
+pgrep -x elephant > /dev/null || (setsid elephant > /dev/null 2>&1 &)
+pgrep -f "walker --gapplication-service" > /dev/null || \
+    (setsid env GSK_RENDERER=cairo walker --gapplication-service > /dev/null 2>&1 &)
+exec walker --width 644 --maxheight 300 --minheight 300 "$@"

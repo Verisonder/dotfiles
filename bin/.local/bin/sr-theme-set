@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+# sr-theme-set <theme> — apply an Omarchy theme to the whole desktop
+import os, re, sys, glob, shutil, subprocess, tomllib
+
+H   = os.path.expanduser("~")
+SRC = H + "/.cache/omarchy-src/themes"
+if len(sys.argv) < 2 or not os.path.isdir(f"{SRC}/{sys.argv[1]}"):
+    print("themes:", " ".join(sorted(os.listdir(SRC)))); sys.exit(1)
+name = sys.argv[1]
+T = f"{SRC}/{name}"
+c = tomllib.load(open(f"{T}/colors.toml", "rb"))
+fg, bg, acc = c["foreground"], c["background"], c["accent"]
+hx = lambda h: h.lstrip("#")
+rgba = lambda h, a: "rgba({}, {}, {}, {})".format(*[int(hx(h)[i:i+2], 16) for i in (0, 2, 4)], a)
+
+def sub(path, pattern, repl):
+    if os.path.exists(path):
+        t = open(path).read()
+        open(path, "w").write(re.sub(pattern, repl, t, flags=re.M))
+
+# Waybar (bar + SR logo)
+open(f"{H}/.config/waybar/colors.css", "w").write(
+    "".join(f"@define-color {k} {v};\n" for k, v in (("foreground", fg), ("background", bg), ("accent", acc))))
+
+# Walker
+wc = f"{H}/.config/walker/themes/omarchy-default/walker-colors.css"
+if os.path.isdir(os.path.dirname(wc)):
+    open(wc, "w").write(
+        f"@define-color selected-text {acc};\n@define-color text {fg};\n@define-color base {bg};\n"
+        f"@define-color border {fg};\n@define-color foreground {fg};\n@define-color background {bg};\n")
+
+# Mako
+mb = f"{H}/.config/mako/config.base"
+if os.path.exists(mb):
+    base = open(mb).read()
+    head, sep, rest = base.partition("\n[")
+    open(f"{H}/.config/mako/config", "w").write(
+        head.rstrip() + f"\n\ntext-color={fg}\nborder-color={acc}\nbackground-color={bg}\n" + (sep + rest if sep else ""))
+
+# Hyprlock
+open(f"{H}/.config/hypr/hyprlock-colors.conf", "w").write("".join(f"${k} = {v}\n" for k, v in (
+    ("color", rgba(bg, 1.0)), ("inner_color", rgba(bg, 0.8)), ("outer_color", rgba(fg, 1.0)),
+    ("font_color", rgba(fg, 1.0)), ("check_color", rgba(acc, 1.0)))))
+
+# Hyprland borders + background
+open(f"{H}/.config/hypr/theme.lua", "w").write(f'''-- written by sr-theme-set ({name})
+hl.config({{
+    general = {{ col = {{ active_border = "rgb({hx(acc)})", inactive_border = "rgba(595959aa)" }} }},
+    group   = {{ col = {{ border_active = "rgb({hx(acc)})", border_inactive = "rgba(595959aa)" }} }},
+    misc    = {{ background_color = "rgba({hx(bg)}ff)" }},
+}})
+''')
+
+# Kitty (fastfetch follows kitty's palette)
+lines = [f"foreground {fg}", f"background {bg}", f"active_border_color {acc}", f"active_tab_background {acc}"]
+for k in ("cursor", "selection_foreground", "selection_background"):
+    if k in c: lines.append(f"{k} {c[k]}")
+lines.append(f"cursor_text_color {bg}")
+lines += [f"color{i} {c[f'color{i}']}" for i in range(16) if f"color{i}" in c]
+open(f"{H}/.config/kitty/theme.conf", "w").write("\n".join(lines) + "\n")
+
+# btop
+if os.path.exists(f"{T}/btop.theme"):
+    os.makedirs(f"{H}/.config/btop/themes", exist_ok=True)
+    shutil.copy(f"{T}/btop.theme", f"{H}/.config/btop/themes/current.theme")
+    bc = f"{H}/.config/btop/btop.conf"
+    t = open(bc).read() if os.path.exists(bc) else ""
+    if re.search(r"^color_theme\s*=", t, re.M):
+        t = re.sub(r"^color_theme\s*=.*$", 'color_theme = "current"', t, flags=re.M)
+    else:
+        t += '\ncolor_theme = "current"\n'
+    open(bc, "w").write(t)
+
+# Wallpaper: first background of the theme
+bgs = sorted(glob.glob(f"{T}/backgrounds/*"))
+if bgs:
+    os.makedirs(f"{H}/Pictures/wallpaper", exist_ok=True)
+    shutil.copy(bgs[0], f"{H}/Pictures/wallpaper/current.jpg")
+
+# GTK apps (Nautilus etc.): Adwaita + the theme Yaru icon colour, like Omarchy
+ic = open(T + "/icons.theme").read().strip() if os.path.exists(T + "/icons.theme") else "Yaru-blue"
+light = os.path.exists(T + "/light.mode")
+for k, v in (("color-scheme", "prefer-light" if light else "prefer-dark"),
+             ("gtk-theme", "Adwaita" if light else "Adwaita-dark"), ("icon-theme", ic)):
+    subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", k, v])
+
+# GTK4 / libadwaita apps (Nautilus etc.): theme colours via ~/.config/gtk-4.0/gtk.css
+def mix(a, b, f):
+    a, b = hx(a), hx(b)
+    return "#" + "".join(format(round(int(a[i:i+2], 16) * (1 - f) + int(b[i:i+2], 16) * f), "02x") for i in (0, 2, 4))
+side, card = mix(bg, fg, 0.06), mix(bg, fg, 0.10)
+g4 = H + "/.config/gtk-4.0/gtk.css"
+os.makedirs(os.path.dirname(g4), exist_ok=True)
+if os.path.exists(g4) and "sr-theme-set" not in open(g4).read():
+    shutil.copy(g4, g4 + ".before-sr")
+pairs = (("accent_bg_color", acc), ("accent_color", acc), ("accent_fg_color", bg),
+         ("window_bg_color", bg), ("window_fg_color", fg), ("view_bg_color", bg), ("view_fg_color", fg),
+         ("headerbar_bg_color", side), ("headerbar_fg_color", fg), ("headerbar_backdrop_color", side),
+         ("sidebar_bg_color", side), ("sidebar_fg_color", fg), ("sidebar_backdrop_color", side),
+         ("card_bg_color", card), ("card_fg_color", fg), ("popover_bg_color", side), ("popover_fg_color", fg),
+         ("dialog_bg_color", side), ("dialog_fg_color", fg))
+open(g4, "w").write("/* written by sr-theme-set */\n" + "".join("@define-color " + k + " " + v + ";\n" for k, v in pairs))
+subprocess.run("nautilus -q", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# KDE apps (Dolphin, Kate, Okular...): KDE colour scheme + icons from the theme
+def kmix(a, b, f):
+    a, b = hx(a), hx(b)
+    return ",".join(str(round(int(a[i:i+2], 16) * (1 - f) + int(b[i:i+2], 16) * f)) for i in (0, 2, 4))
+krgb = lambda h: ",".join(str(int(hx(h)[i:i+2], 16)) for i in (0, 2, 4))
+red, green, yellow = c.get("color1", "#cc6666"), c.get("color2", "#99cc99"), c.get("color3", "#f0c674")
+alt, hdr, mute = kmix(bg, fg, 0.04), kmix(bg, fg, 0.07), kmix(bg, fg, 0.55)
+def ksec(bgn, bga, fgn):
+    return (f"BackgroundNormal={bgn}\nBackgroundAlternate={bga}\nDecorationFocus={krgb(acc)}\n"
+            f"DecorationHover={krgb(acc)}\nForegroundNormal={fgn}\nForegroundInactive={mute}\n"
+            f"ForegroundActive={krgb(acc)}\nForegroundLink={krgb(acc)}\nForegroundVisited={kmix(acc, fg, 0.3)}\n"
+            f"ForegroundNegative={krgb(red)}\nForegroundNeutral={krgb(yellow)}\nForegroundPositive={krgb(green)}\n")
+kname = "SR-B" if "ColorScheme=SR-A" in (open(H + "/.config/kdeglobals").read() if os.path.exists(H + "/.config/kdeglobals") else "") else "SR-A"
+kcs = "[General]\nColorScheme=" + kname + "\nName=" + kname + "\n\n"
+for sec, b1, b2, f1 in (("Window", krgb(bg), alt, krgb(fg)), ("View", krgb(bg), alt, krgb(fg)),
+                        ("Button", hdr, alt, krgb(fg)), ("Header", hdr, alt, krgb(fg)),
+                        ("Tooltip", hdr, alt, krgb(fg)), ("Complementary", hdr, alt, krgb(fg)),
+                        ("Selection", krgb(acc), krgb(acc), krgb(bg))):
+    kcs += "[Colors:" + sec + "]\n" + ksec(b1, b2, f1) + "\n"
+kcs += f"[WM]\nactiveBackground={hdr}\nactiveForeground={krgb(fg)}\ninactiveBackground={krgb(bg)}\ninactiveForeground={mute}\n"
+os.makedirs(H + "/.local/share/color-schemes", exist_ok=True)
+for old in ("SR-A", "SR-B"):
+    if old != kname and os.path.exists(H + "/.local/share/color-schemes/" + old + ".colors"):
+        os.remove(H + "/.local/share/color-schemes/" + old + ".colors")
+open(H + "/.local/share/color-schemes/" + kname + ".colors", "w").write(kcs)
+if shutil.which("plasma-apply-colorscheme"):
+    subprocess.run(["plasma-apply-colorscheme", kname], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+# Icons for KDE apps: Breeze (has every KDE toolbar icon) + the theme's coloured Yaru folders on top
+kic = open(T + "/icons.theme").read().strip() if os.path.exists(T + "/icons.theme") else "Yaru-blue"
+ICONS = "/usr/share/icons"
+isrc = ICONS + "/" + kic
+if os.path.isdir(isrc):
+    kg = open(H + "/.config/kdeglobals").read() if os.path.exists(H + "/.config/kdeglobals") else ""
+    iname = "SR-icons-B" if re.search(r"\[Icons\][^\[]*?Theme=SR-icons-A", kg) else "SR-icons-A"
+    ibase = H + "/.local/share/icons/"
+    for old in ("SR-icons-A", "SR-icons-B"):
+        shutil.rmtree(ibase + old, ignore_errors=True)
+    idst = ibase + iname
+    os.makedirs(idst)
+    idx = open(isrc + "/index.theme").read()
+    dirs = []
+    for key in ("Directories", "ScaledDirectories"):
+        m = re.search(r"^" + key + r"=(.*)$", idx, re.M)
+        if m:
+            dirs += [d.strip() for d in m.group(1).split(",") if d.strip()]
+    dirs = [d for d in dict.fromkeys(dirs) if os.path.isdir(isrc + "/" + d)]
+    for d in dirs:
+        os.makedirs(os.path.dirname(idst + "/" + d), exist_ok=True)
+        os.symlink(isrc + "/" + d, idst + "/" + d)
+    sections = [blk.strip() for blk in re.split(r"\n(?=\[)", idx) if blk.startswith("[") and blk[1:blk.find("]")] in dirs]
+    open(idst + "/index.theme", "w").write(
+        "[Icon Theme]\nName=" + iname + "\nComment=" + kic + " folders on Breeze\n"
+        "Inherits=breeze-dark,breeze,hicolor\nDirectories=" + ",".join(dirs) + "\n\n" + "\n\n".join(sections) + "\n")
+    if os.path.exists("/usr/libexec/plasma-changeicons"):
+        subprocess.run(["/usr/libexec/plasma-changeicons", iname], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+os.makedirs(f"{H}/.config/sr", exist_ok=True)
+open(f"{H}/.config/sr/theme", "w").write(name)
+
+# Apply live
+run = lambda cmd: subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+run("pkill waybar; pkill swaybg")
+run("makoctl reload")
+run("pkill -SIGUSR1 kitty")
+run("pkill -f 'walker --gapplication-service'")
+run("hyprctl reload")
+run(f"notify-send 'Theme' '{name}'")
+print("theme:", name)

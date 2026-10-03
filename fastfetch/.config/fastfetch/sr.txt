@@ -1,0 +1,23 @@
+                          $2RRRRRRRRRRRRRR
+                          $2RRRRRRRRRRRRRRRR
+                          $2RRRRRRRRRRRRRRRRR
+                          $2RRRRRR     $2RRRRRR
+                          $2RRRRRR     $2RRRRRR
+                          $2RRRRRR     $2RRRRRRR
+                          $2RRRRRRRRRRRRRRRRRRRR
+                             $2RRRRRRRRRRRRRRRRRR
+                          $2RRRRRRRRRRRRRRRRRRRRRR
+       $1SSSSSSSSSSSSSS     $2RRRRRRRRRRRRRRRRRRRRR
+     $1SSSSSSSSSSSSSSSS     $2RRRRRRRRRRRRRRRRRRRR
+   $1SSSSSSSSSSSSSSSSSS     $2RRRRRR     $2RRRRRR
+   $1SSSSSS     $1SSSSSSS     $2RRRRRR     $2RRRRRR
+   $1SSSSSS     $1SSSSS       $2RRRRRR     $2RRRRRR
+   $1SSSSSS      $1SS         $2RRRRRR     $2RRRRRR
+   $1SSSSSS
+$1SSSSSSSSSSSSSSSSSSSSSS
+  $1SSSSSSSSSSSSSSSSSSSS
+              $1SSSSSS
+      $1SSS     $1SSSSSS
+    $1SSSSSSSSSSSSSSSS
+  $1SSSSSSSSSSSSSSSSSS
+  $1SSSSSSSSSSSSSSSS

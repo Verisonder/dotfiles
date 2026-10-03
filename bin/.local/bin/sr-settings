@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# SR Settings — Omarchy-style menu in Walker
+SRC="$HOME/.cache/omarchy-src/themes"
+HYPR="$HOME/.config/hypr"
+pick() { walker --dmenu; }
+
+edit() {   # edit <file> [line]
+    if command -v kate > /dev/null; then
+        setsid kate ${2:+--line "$2"} "$1" > /dev/null 2>&1 &
+    else
+        exec setsid kitty --class org.sr.editor -e nano ${2:+"+$2"} "$1"
+    fi
+}
+
+reload() {
+    for f in "$HYPR/hyprland.lua" "$HYPR/keybinds.lua"; do
+        if ! out=$(luac -p "$f" 2>&1); then
+            notify-send -u critical "Not reloaded — error in $(basename "$f")" "$out"
+            return
+        fi
+    done
+    pkill waybar
+    hyprctl reload > /dev/null
+    sleep 1
+    errs=$(hyprctl configerrors)
+    if [ -n "$errs" ]; then notify-send -u critical "Hyprland config errors" "$errs"
+    else notify-send "Desktop reloaded"; fi
+}
+
+theme_menu() {
+    exec "$HOME/.local/bin/sr-launcher" -m menus:srthemes --width 800 --minheight 400
+}
+
+wallpaper_menu() {
+    exec "$HOME/.local/bin/sr-launcher" -m menus:srwallpapers --width 800 --minheight 400
+}
+
+keybind_menu() {
+    list=$(python3 - "$HYPR/keybinds.lua" << 'PY'
+import re, sys
+for n, l in enumerate(open(sys.argv[1]), 1):
+    m = re.match(r'\s*hl\.bind\((.+?),\s*(hl\.dsp\..*|function.*|\w+\(.*)$', l)
+    if not m: continue
+    key = m.group(1).replace('mainMod .. "', '"SUPER').replace('" .. "', '').replace('"', '').strip()
+    act = m.group(2)
+    a = re.search(r'exec_cmd\((.*?)\)\s*[,)]', act)
+    if a:
+        act = a.group(1).replace('HOME .. "', '"~').replace('"', '')
+    elif act.rstrip().endswith("exec_cmd("):
+        act = "(command on next line)"
+    else:
+        act = re.sub(r',\s*\{[^}]*\}\)\s*$', ')', act.strip())
+        act = re.sub(r'^hl\.dsp\.', '', act)
+        act = act[:-1] if act.endswith(')') else act
+    print(f"{n:>4}  {key:<26} {act.strip()[:60]}")
+PY
+)
+    choice=$(printf '   Edit keybindings file\n%s\n' "$list" | pick)
+    [ -n "$choice" ] || return
+    if [[ "$choice" == *"Edit keybindings file"* ]]; then edit "$HYPR/keybinds.lua"
+    else edit "$HYPR/keybinds.lua" "$(echo "$choice" | awk '{print $1}')"; fi
+}
+
+config_menu() {
+    choice=$(printf '%s\n' "Hyprland" "Keybindings" "Waybar layout" "Waybar style" \
+        "Walker" "Kitty" "Fastfetch" "Notifications" "Lock screen" "Idle" | pick)
+    case "$choice" in
+        Hyprland)        edit "$HYPR/hyprland.lua" ;;
+        Keybindings)     edit "$HYPR/keybinds.lua" ;;
+        "Waybar layout") edit "$HOME/.config/waybar/config.jsonc" ;;
+        "Waybar style")  edit "$HOME/.config/waybar/style.css" ;;
+        Walker)          edit "$HOME/.config/walker/config.toml" ;;
+        Kitty)           edit "$HOME/.config/kitty/kitty.conf" ;;
+        Fastfetch)       edit "$HOME/.config/fastfetch/config.jsonc" ;;
+        Notifications)   edit "$HOME/.config/mako/config" ;;
+        "Lock screen")   edit "$HYPR/hyprlock.conf" ;;
+        Idle)            edit "$HYPR/hypridle.conf" ;;
+    esac
+}
+
+choice=$(printf '%s\n' "󰸌  Theme" "  Hidden apps" "󰸉  Wallpaper" "  Keybindings" "  Edit configs" "󰑓  Reload desktop" | pick)
+case "$choice" in
+    *Theme)        theme_menu ;;
+    *"Hidden apps") exec ~/.local/bin/sr-apps ;;
+    *Wallpaper)    wallpaper_menu ;;
+    *Keybindings)  keybind_menu ;;
+    *"Edit configs") config_menu ;;
+    *Reload*)      reload ;;
+esac

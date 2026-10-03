@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# sr-wallpaper-set <image> — set the wallpaper (also used by the lock screen)
+[ -f "$1" ] || { notify-send -u critical "Wallpaper not found" "$1"; exit 1; }
+mkdir -p "$HOME/Pictures/wallpaper"
+cp "$1" "$HOME/Pictures/wallpaper/current.jpg"
+pkill swaybg
+hyprctl reload > /dev/null

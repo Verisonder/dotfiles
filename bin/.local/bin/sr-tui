@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# sr-tui <name> <command...>
+# Opens a TUI in a floating kitty window (class org.sr.<name>), or closes it if already open.
+name="$1"; shift
+class="org.sr.$name"
+pid=$(hyprctl clients -j | python3 -c '
+import json, sys
+c = sys.argv[1]
+print(next((str(w["pid"]) for w in json.load(sys.stdin) if w.get("class") == c), ""))
+' "$class")
+if [ -n "$pid" ]; then
+    kill "$pid"
+    exit 0
+fi
+case "$name" in
+    wlctl)   rfkill unblock wifi 2>/dev/null || true ;;
+    bluetui) rfkill unblock bluetooth 2>/dev/null || true ;;
+esac
+exec setsid kitty --class "$class" -e "$@"
